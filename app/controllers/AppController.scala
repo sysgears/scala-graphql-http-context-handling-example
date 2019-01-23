@@ -1,7 +1,7 @@
 package controllers
 
 import com.google.inject.{Inject, Singleton}
-import graphql.GraphQL
+import graphql.{GraphQL, HttpContext}
 import models.errors.{TooComplexQueryError, UnsupportedBodyTypeError}
 import play.api.libs.json._
 import play.api.mvc._
@@ -61,7 +61,10 @@ class AppController @Inject()(controllerComponents: ControllerComponents,
       }
 
       maybeQuery match {
-        case Success((query, operationName, variables)) => executeQuery(query, variables, operationName)
+        case Success((query, operationName, variables)) =>
+          val httpContext = HttpContext(request.headers)
+          executeQuery(query, variables, operationName, httpContext)
+            .map(_.withHeaders(httpContext.newHeaders: _*).withCookies(httpContext.newCookies: _*))
         case Failure(error) => Future.successful {
           BadRequest(error.getMessage)
         }
@@ -92,17 +95,21 @@ class AppController @Inject()(controllerComponents: ControllerComponents,
     * @param query     GraphQL body of request
     * @param variables incoming variables passed in the request
     * @param operation a name of the operation (queries or mutations)
+    * @param context   a context, that contains http data
     * @return simple result which defines the response header and the body to send to the client
     */
-  def executeQuery(query: String, variables: Option[JsObject] = None, operation: Option[String] = None): Future[Result] = QueryParser.parse(query) match {
+  def executeQuery(query: String,
+                   variables: Option[JsObject] = None,
+                   operation: Option[String] = None,
+                   context: HttpContext): Future[Result] = QueryParser.parse(query) match {
     case Success(queryAst: Document) => Executor.execute(
       schema = graphQL.Schema,
       queryAst = queryAst,
+      userContext = context,
       variables = variables.getOrElse(Json.obj()),
-      exceptionHandler = graphQL.exceptionHandler,
       queryReducers = List(
-        QueryReducer.rejectMaxDepth[Unit](graphQL.maxQueryDepth),
-        QueryReducer.rejectComplexQueries[Unit](graphQL.maxQueryComplexity, (_, _) => TooComplexQueryError())
+        QueryReducer.rejectMaxDepth[HttpContext](graphQL.maxQueryDepth),
+        QueryReducer.rejectComplexQueries[HttpContext](graphQL.maxQueryComplexity, (_, _) => TooComplexQueryError())
       )
     ).map(Ok(_)).recover {
       case error: QueryAnalysisError ⇒ BadRequest(error.resolveError)
