@@ -3,7 +3,8 @@ package modules
 import com.google.inject.{AbstractModule, Provides, Scopes}
 import models.Post
 import repositories.{PostRepository, Repository}
-import validators.{PostValidator, PostValidatorImpl}
+import services.{PostsAuthorizeService, PostsAuthorizeServiceImpl}
+import validators.{AdminAccessValidator, AdminAccessValidatorImpl, PostValidator, PostValidatorImpl}
 
 import scala.concurrent.ExecutionContext
 
@@ -17,6 +18,8 @@ class PostBinding extends AbstractModule {
     */
   override def configure(): Unit = {
     bind(classOf[PostValidator]).to(classOf[PostValidatorImpl]).in(Scopes.SINGLETON)
+    bind(classOf[PostsAuthorizeService]).to(classOf[PostsAuthorizeServiceImpl]).in(Scopes.SINGLETON)
+    bind(classOf[AdminAccessValidator]).to(classOf[AdminAccessValidatorImpl]).in(Scopes.SINGLETON)
   }
 
   /**
