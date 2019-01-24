@@ -1,8 +1,8 @@
-# Error handling in GraphQL API written in Scala
+# Best practices of processing HTTP headers and cookies in GraphQL API in Scala
 
-[![Build Status](https://travis-ci.org/kmusienko/graphql-error-handling.svg?branch=master)](https://travis-ci.org/kmusienko/graphql-error-handling) 
+[![Build Status](https://travis-ci.org/serjorez/graphql-http-context-handling.svg?branch=master)](https://travis-ci.org/serjorez/graphql-http-context-handling.svg?branch=master) 
 
-This is an example of a GraphQL server written with Play framework and Sangria that shows how to implement error handling in GraphQL API.
+This is an example of a GraphQL server written with Play framework and Sangria that shows best practices of processing HTTP headers and cookies in GraphQL API.
 
 ## How to start
 
