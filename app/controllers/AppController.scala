@@ -62,7 +62,7 @@ class AppController @Inject()(controllerComponents: ControllerComponents,
 
       maybeQuery match {
         case Success((query, operationName, variables)) =>
-          val httpContext = Context(request.headers)
+          val httpContext = Context(request.headers, request.cookies)
           executeQuery(query, variables, operationName, httpContext)
             .map(_.withHeaders(httpContext.newHeaders: _*).withCookies(httpContext.newCookies: _*))
         case Failure(error) => Future.successful {
