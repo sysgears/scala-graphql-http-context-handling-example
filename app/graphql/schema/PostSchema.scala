@@ -1,27 +1,31 @@
 package graphql.schema
 
 import com.google.inject.Inject
-import graphql.HttpContext
+import graphql.Context
 import graphql.resolvers.PostResolver
 import models.Post
 import sangria.macros.derive.{ObjectTypeName, deriveObjectType}
 import sangria.schema._
+import services.PostsAuthorizeService
+import validators.AdminAccessValidator
 
 /**
   * Defines GraphQL schema for the Post entity.
   */
-class PostSchema @Inject()(postResolver: PostResolver) {
+class PostSchema @Inject()(postResolver: PostResolver,
+                           authorizeService: PostsAuthorizeService,
+                           adminAccessValidator: AdminAccessValidator) {
 
   /**
     * Sangria's representation of the Post type.
     * It's necessary to convert Post object into Sangria's GraphQL object to represent it in the GraphQL format.
     */
-  implicit val PostType: ObjectType[HttpContext, Post] = deriveObjectType[HttpContext, Post](ObjectTypeName("Post"))
+  implicit val PostType: ObjectType[Context, Post] = deriveObjectType[Context, Post](ObjectTypeName("Post"))
 
   /**
     * List of GraphQL queries defined for the Post type.
     */
-  val Queries: List[Field[HttpContext, Unit]] = List(
+  val Queries: List[Field[Context, Unit]] = List(
     Field(
       name = "posts",
       fieldType = ListType(PostType),
@@ -42,7 +46,7 @@ class PostSchema @Inject()(postResolver: PostResolver) {
   /**
     * List of GraphQL mutations defined for the Post type.
     */
-  val Mutations: List[Field[HttpContext, Unit]] = List(
+  val Mutations: List[Field[Context, Unit]] = List(
     Field(
       name = "addPost",
       fieldType = PostType,
@@ -51,9 +55,13 @@ class PostSchema @Inject()(postResolver: PostResolver) {
         Argument("content", StringType)
       ),
       resolve = sangriaContext =>
-        postResolver.addPost(
-          sangriaContext.args.arg[String]("title"),
-          sangriaContext.args.arg[String]("content")
+        authorizeService.withPostAuthorization(sangriaContext.ctx)(
+          userId =>
+            postResolver.addPost(
+              sangriaContext.args.arg[String]("title"),
+              sangriaContext.args.arg[String]("content"),
+              userId
+            )
         )
     ),
     Field(
@@ -65,10 +73,12 @@ class PostSchema @Inject()(postResolver: PostResolver) {
         Argument("content", StringType)
       ),
       resolve = sangriaContext =>
-        postResolver.updatePost(
-          sangriaContext.args.arg[Long]("id"),
-          sangriaContext.args.arg[String]("title"),
-          sangriaContext.args.arg[String]("content")
+        adminAccessValidator.withAdminAccessValidation(sangriaContext.ctx)(
+          postResolver.updatePost(
+            sangriaContext.args.arg[Long]("id"),
+            sangriaContext.args.arg[String]("title"),
+            sangriaContext.args.arg[String]("content")
+          )
         )
     ),
     Field(
@@ -79,7 +89,9 @@ class PostSchema @Inject()(postResolver: PostResolver) {
       ),
       resolve =
         sangriaContext =>
-          postResolver.deletePost(sangriaContext.args.arg[Long]("id"))
+          adminAccessValidator.withAdminAccessValidation(sangriaContext.ctx)(
+            postResolver.deletePost(sangriaContext.args.arg[Long]("id"))
+          )
     )
   )
 }
