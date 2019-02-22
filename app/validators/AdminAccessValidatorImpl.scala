@@ -13,11 +13,11 @@ import scala.concurrent.Future
 class AdminAccessValidatorImpl @Inject()(config: AccessConfig) extends AdminAccessValidator {
 
   /** @inheritdoc*/
-  override def withAdminAccessValidation[T](context: Context)(callback: => Future[T]): Future[T] = {
-    context.requestHeaders.get("admin-access-token") match {
-      case Some(value) =>
-        if (config.adminAccessToken == value) callback else Future.failed(Forbidden("You dont have admin rights."))
-      case None => Future.failed(Forbidden("You don't have admin rights."))
+  override def withAdminAccessValidation[T](context: Context)
+                                           (callback: => Future[T]): Future[T] = {
+    context.requestCookies.get("admin-access-token") match {
+      case Some(value) if config.getAdminAccessToken == value.value => callback
+      case _ => Future.failed(Forbidden("You don't have admin rights."))
     }
   }
 }
