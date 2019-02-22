@@ -11,7 +11,7 @@ import scala.concurrent.ExecutionContext
 /**
   * The Guice module with bindings related to the Post entity.
   */
-class PostBinding extends AbstractModule {
+class PostModule extends AbstractModule {
 
   /**
     * A method where bindings should be defined.
