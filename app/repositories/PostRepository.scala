@@ -1,77 +1,96 @@
 package repositories
 
-import com.google.inject.Inject
-
-import scala.collection.mutable
+import com.google.inject.{Inject, Singleton}
 import models.Post
 import models.errors.{AlreadyExists, NotFound}
+import modules.AppDatabase
+import slick.lifted
 
 import scala.concurrent.{ExecutionContext, Future}
 
 /**
-  * Provides basic operations on the Post entity.
-  *
+  * Provides basic CRUD operations on the Post entity.
+  * @param database a database access object
   * @param executionContext a thread pool to asynchronously execute operations
   */
-class PostRepository @Inject()(implicit val executionContext: ExecutionContext) extends Repository[Post] {
+@Singleton
+class PostRepository @Inject()(val database: AppDatabase,
+                               implicit val executionContext: ExecutionContext) extends Repository[Post] {
 
   /**
-    * Collection of the Post entities.
+    * Specific database
     */
-  val postCollection: mutable.ArrayBuffer[Post] = mutable.ArrayBuffer.empty[Post]
+  val db = database.db
 
-  /** @inheritdoc*/
-  override def create(post: Post): Future[Post] = synchronized {
-    postCollection.find(_.title == post.title).fold {
-      Future {
-        val newPost = post.copy(
-          id = {
-            val allIds = postCollection.flatMap(_.id)
-            if (allIds.nonEmpty) Some(allIds.max + 1L) else Some(1L)
-          }
-        )
-        postCollection += newPost
-        newPost
+  /**
+    * Specific database profile
+    */
+  val profile = database.profile
+
+  import profile.api._
+
+  def postQuery: TableQuery[Post.Table] = lifted.TableQuery[Post.Table]
+
+  /** @inheritdoc */
+  override def create(post: Post): Future[Post] = db.run {
+    Actions.create(post)
+  }
+
+  /** @inheritdoc */
+  override def find(id: Long): Future[Option[Post]] = db.run {
+    Actions.find(id)
+  }
+
+  /** @inheritdoc */
+  override def findAll(): Future[List[Post]] = db.run {
+    Actions.findAll()
+  }
+
+  /** @inheritdoc */
+  override def update(post: Post): Future[Post] = db.run {
+    Actions.update(post)
+  }
+
+  /** @inheritdoc */
+  override def delete(id: Long): Future[Boolean] = db.run {
+    Actions.delete(id)
+  }
+
+  /**
+    * Provides implementation for CRUD operations on the Post entity.
+    */
+  object Actions {
+
+    def create(post: Post): DBIO[Post] = for {
+      maybePost <- if (post.id.isEmpty) DBIO.successful(None) else find(post.id.get)
+      _ <- maybePost.fold(DBIO.successful(None)) {
+        _ => DBIO.failed(AlreadyExists(s"Post with id = ${post.id} already exists."))
       }
-    } {
-      _ => Future.failed(AlreadyExists(s"Post with title='${post.title}' already exists."))
-    }
-  }
-
-  /** @inheritdoc*/
-  override def find(id: Long): Future[Option[Post]] = Future.successful {
-    postCollection.find(_.id.contains(id))
-  }
-
-  /** @inheritdoc*/
-  override def findAll(): Future[List[Post]] = Future.successful {
-    postCollection.toList
-  }
-
-  /** @inheritdoc*/
-  override def update(post: Post): Future[Post] = synchronized {
-    post.id match {
-      case Some(id) =>
-        find(id).flatMap {
-          case Some(_) =>
-            val foundPostIndex = postCollection.indexWhere(_.id == post.id)
-            postCollection(foundPostIndex) = post
-            Future.successful(post)
-          case _ => Future.failed(NotFound(s"Can't find post with id=${post.id}."))
-        }
-      case _ => Future.failed(NotFound("Post's id wasn't provided."))
-    }
-  }
-
-  /** @inheritdoc*/
-  override def delete(id: Long): Future[Boolean] = Future.successful {
-    synchronized {
-      postCollection.indexWhere(_.id.contains(id)) match {
-        case -1 => false
-        case personIndex =>
-          postCollection.remove(personIndex)
-          true
+      postWithSameTitle <- postQuery.filter(_.title === post.title).result
+      id <- if (postWithSameTitle.lengthCompare(1) < 0) postQuery returning postQuery.map(_.id) += post else {
+        DBIO.failed(AlreadyExists(s"Post with title = '${post.title}' already exists."))
       }
-    }
+    } yield post.copy(id = Some(id))
+
+    def find(id: Long): DBIO[Option[Post]] = postQuery.filter(_.id === id).result.headOption
+
+    def findAll(): DBIO[List[Post]] = postQuery.result.map(_.toList)
+
+    def update(post: Post): DBIO[Post] = for {
+      maybePostWithSameTitle <- postQuery.filter(_.title === post.title).result
+      _ <- if (maybePostWithSameTitle.lengthCompare(1) < 0) DBIO.successful(None) else {
+        DBIO.failed(AlreadyExists(s"Post with title='${post.title}' already exists."))
+      }
+      count <- postQuery.filter(_.id === post.id).update(post)
+      _ <- count match {
+        case 0 => DBIO.failed(NotFound(s"Can't find post with id=${post.id}."))
+        case _ => DBIO.successful(())
+      }
+    } yield post
+
+    def delete(id: Long): DBIO[Boolean] = for {
+      deleteCount <- postQuery.filter(_.id === id).delete
+      isDeleted = if (deleteCount == 1) true else false
+    } yield isDeleted
   }
 }
